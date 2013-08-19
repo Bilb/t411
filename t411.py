@@ -76,14 +76,13 @@ class T411 :
 		r = conn.getresponse()
 
 		if r.status == HTTP_OK :
-			return str(r.read(), encoding = "UTF-8")
+			rt = str(r.read(), encoding = "UTF-8")
+			conn.close()
+			
+			return rt
 		else :
 			conn.close()
-			del conn
 			return False
-
-		conn.close()
-		del conn
 
 	def me(self) :
 		""" Get personal informations """
