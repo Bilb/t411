@@ -7,16 +7,18 @@ Python interface for T411.me
 Author : Arnout Pierre <pierre@arnout.fr>
 """
 
-from http.client import HTTPSConnection
-from urllib.parse import urlencode
+import getpass
 import json
+import requests
 
 HTTP_OK = 200
-API_URL = 'api.t411.me'
+API_URL = 'https://api.t411.me/%s'
 USER_FILE = 'user.json'
-HTTP_HEADERS = {'Content-type': 'application/x-www-form-urlencoded'}
 
-class T411 :
+class T411Exception(BaseException):
+    pass
+
+class T411(object):
     """ Base class for t411 interface """
 
     def __init__(self, username = None, password = None) :
@@ -24,69 +26,54 @@ class T411 :
         defined use token stored in user file
         """
         
-        if username is None or password is None :
-            # Try to read user file
-            try :
-                u_file = open(USER_FILE, 'r')
-            except :
-                print('Error, you have to define an user and password. Signup '
-                     +'at http://www.t411.me/users/signup/')
-            
-            #Extract data from file
-            data = json.loads(u_file.read())
-            try :
-                token = data['token']
-                uid = data['uid']
-            except :
-                print('Error, user file seems to be wrong. Restart with '
-                     +'credentials informations')
-        else :
-            # Authentification and storing token
-            auth = json.loads(self._auth(username, password))
-            if 'error' in auth :
-                print(auth['error'])
-                return None
-            else :
-                token = auth['token']
-                uid = auth['uid']
-
-                # Create or update user file
-                data = {'uid': '%s' % uid, 'token': '%s' % token}
-                data = json.dumps(data)
-
-                u_file = open(USER_FILE, 'w')
-                u_file.write(data)
-                u_file.close()
-                del u_file
-
-        self._token = token
-        self._uid = uid
+        try :
+            with open(USER_FILE) as user_file:
+                self.user_credentials = json.loads(user_file.read())
+                if 'uid' not in self.user_credentials or 'token' not in \
+                        self.user_credentials:
+                    raise T411Exception('Wrong data found in user file')
+                else:
+                    # we have to ask the user for its credentials and get
+                    # the token from the API
+                    user = input('Please enter username: ')
+                    password = getpass.getpass('Please enter password: ')
+                    self._auth(user, password)
+        except IOError as e:
+            # we have to ask the user for its credentials and get
+            # the token from the API
+            user = input('Please enter username: ')
+            password = getpass.getpass('Please enter password: ')
+            self._auth(user, password)
+        except T411Exception as e:
+            raise T411Exception(e.message)
+        except Exception as e:
+            raise T411Exception('Error while reading user credentials: %s.'\
+                    % e.message)
 
     def _auth(self, username, password) :
         """ Authentificate user and store token """
-        return self.call('auth', {'username': username, 'password': password})
+        self.user_credentials = self.call('auth', {'username': username, 'password': password})
+        if 'error' in self.user_credentials:
+            raise T411Exception('Error while fetching authentication token: %s'\
+                    % self.user_credentials['error'])
+        # Create or update user file
+        user_data = json.dumps({'uid': '%s' % uid, 'token': '%s' % token})
+        with open(USER_FILE, 'w') as user_file:
+            user_file.write(user_data)
+        return True
 
     def call(self, method = '', params = None) :
         """ Call T411 API """
-        if params != None :
-            params = urlencode(params)
-        
-        headers = HTTP_HEADERS
+        call_params = {'url': API_URL % method, 'params': params}
         if method != 'auth' :
-            headers['Authorization'] = self._token
+            call_params['headers'] = {'Authorization': self.user_credentials['token']}
+        req = requests.post(**call_params)
 
-        conn = HTTPSConnection(API_URL)
-        conn.request('POST', '/%s' % method, body = params, headers = headers)
-        r = conn.getresponse()
-
-        if r.status == HTTP_OK :
-            rt = str(r.read(), encoding = "UTF-8")
-            conn.close()
-            
-            return rt
+        if req.status_code == requests.codes.OK:
+            return req.json()
         else :
-            conn.close()
-            return False
+            raise T411Exception('Error while sending %s request: HTTP %s' % \
+                    (method, req.status_code))
 
     def me(self) :
         """ Get personal informations """
@@ -111,3 +98,4 @@ class T411 :
     def download(self, torrent_id) :
         """ Download a torrent """
         return self.call('torrents/download/%s' % torrent_id)
+
