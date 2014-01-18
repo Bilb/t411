@@ -4,12 +4,15 @@
 """
 Python interface for T411.me
 
-Author : Arnout Pierre <pierre@arnout.fr>
+Authors : 
+ * Arnout Pierre <pierre@arnout.fr>
+ * Ackermann Audric <audric.bilb@gmail.com>
 """
 
-import getpass
-import json
-import requests
+
+from getpass import getpass
+from json import loads, dumps  
+from requests import post, codes
 
 HTTP_OK = 200
 API_URL = 'https://api.t411.me/%s'
@@ -30,21 +33,23 @@ class T411(object):
         
         try :
             with open(USER_CREDENTIALS_FILE) as user_cred_file:
-                self.user_credentials = json.loads(user_cred_file.read())
+                self.user_credentials = loads(user_cred_file.read())
+                print(self.user_credentials)
                 if 'uid' not in self.user_credentials or 'token' not in \
                         self.user_credentials:
                     raise T411Exception('Wrong data found in user file')
-                else:
+                #else:
                     # we have to ask the user for its credentials and get
                     # the token from the API
-                    user = raw_input('Please enter username: ')
-                    password = getpass.getpass('Please enter password: ')
-                    self._auth(user, password)
+                    #user = raw_input('Please enter username: ')
+                    #password = getpass('Please enter password: ')
+                    #self._auth(user, password)
         except IOError as e:
             # we have to ask the user for its credentials and get
             # the token from the API
+            print("test2")
             user = raw_input('Please enter username: ')
-            password = getpass.getpass('Please enter password: ')
+            password = getpass('Please enter password: ')
             self._auth(user, password)
         except T411Exception as e:
             raise T411Exception(e.message)
@@ -60,7 +65,7 @@ class T411(object):
             raise T411Exception('Error while fetching authentication token: %s'\
                     % self.user_credentials['error'])
         # Create or update user file
-        user_data = json.dumps({'uid': '%s' % self.user_credentials['uid'], 'token': '%s' % self.user_credentials['token']})
+        user_data = dumps({'uid': '%s' % self.user_credentials['uid'], 'token': '%s' % self.user_credentials['token']})
         with open(USER_CREDENTIALS_FILE, 'w') as user_cred_file:
             user_cred_file.write(user_data)
         return True
@@ -69,11 +74,11 @@ class T411(object):
         """ Call T411 API """
         
         if method != 'auth' :
-            req = requests.post(API_URL % method, data=params, headers={'Authorization': self.user_credentials['token']}  )
+            req = post(API_URL % method, data=params, headers={'Authorization': self.user_credentials['token']}  )
         else:
-            req = requests.post(API_URL % method, data=params)
+            req = post(API_URL % method, data=params)
             
-        if req.status_code == requests.codes.OK:
+        if req.status_code == codes.OK:
             return req.json()
         else :
             raise T411Exception('Error while sending %s request: HTTP %s' % \
@@ -98,16 +103,50 @@ class T411(object):
     def details(self, torrent_id) :
         """ Get torrent details """
         return self.call('torrents/details/%s' % torrent_id)
+        
+    def search(self, to_search) :
+        """ Get torrent results for specific search """
+        return self.call('torrents/search/%s' % to_search)    
 
     def download(self, torrent_id) :
         """ Download a torrent """
         return self.call('torrents/download/%s' % torrent_id)
+        
+    def top100(self) :
+        """ Get top 100 """
+        return self.call('/torrents/top/100')
+        
 
+    def top_today(self) :
+        """ Get top today """
+        return self.call('/torrents/top/today')
+
+
+    def top_week(self) :
+        """ Get top week """
+        return self.call('/torrents/top/week')
+
+    def top_month(self) :
+        """ Get top month """
+        return self.call('/torrents/top/month')
+        
+    def get_bookmarks(self) :
+        """ Get bookmarks of user """
+        return self.call('/bookmarks')
+        
+    def add_bookmark(self, torrent_id) :
+        """ Get bookmarks of user """
+        return self.call('/bookmarks/save/%s' % torrent_id)
+         
+         
+    def delete_bookmark(self, torrent_id) :
+        """ Delete a bookmark """
+        return self.call('/bookmarks/delete/%s' % torrent_id)
 
 
 if __name__ == "__main__":
     t411 = T411()
-    #print(t411.categories())
+    print(t411.search("Homeland"))
     
     
     
